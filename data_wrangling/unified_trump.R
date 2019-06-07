@@ -1431,6 +1431,436 @@ trump_oil<-trump_oil %>% mutate(Period = ifelse(year(date)<2016,"Before","After"
 save(trump_oil,file = "trump_oil_all.RData")
 
 
+#eda
+
+trump_oil %>% mutate(Year=year(date)) %>%
+        group_by(Year) %>%
+        summarise(Tweet_Vol=sum(Tweet_volume,na.rm=TRUE),
+                  Oil_Tweets=sum(oil_keyword==TRUE,na.rm=TRUE),
+                  percentage_Oil_Tweets=(sum(oil_keyword==TRUE,na.rm=TRUE)/sum(Tweet_volume,na.rm = TRUE))*100) %>%
+        knitr::kable()
+
+
+trump_oil %>% mutate(Year=year(date)) %>%
+        group_by(Year) %>%
+        summarise(Tweet_Vol=sum(Tweet_volume,na.rm=TRUE),
+                  Oil_Tweets=sum(oil_keyword==TRUE,na.rm=TRUE),
+                  percentage_Oil_Tweets=(sum(oil_keyword==TRUE,na.rm=TRUE)/sum(Tweet_volume,na.rm = TRUE))*100) %>%
+        ggplot(.,aes(y=Oil_Tweets,x=as.factor(Year)))+
+        geom_bar(stat = "identity",fill="red",alpha="0.4",color="blue")+
+        labs(y="Oil related Tweets",
+             title = "Trump Oil related Tweets over time",
+             x="Year")+
+        ggthemes::theme_tufte()
+
+
+trump_oil %>% mutate(Year=year(date)) %>%
+        group_by(Year) %>%
+        summarise(Tweet_Vol=sum(Tweet_volume,na.rm=TRUE),
+                  Oil_Tweets=sum(oil_keyword==TRUE,na.rm=TRUE),
+                  percentage_Oil_Tweets=(sum(oil_keyword==TRUE,na.rm=TRUE)/sum(Tweet_volume,na.rm = TRUE))*100) %>%
+        ggplot(.,aes(y=percentage_Oil_Tweets,x=as.factor(Year)))+
+        geom_bar(stat = "identity",fill="blue",alpha="0.4",color="red")+
+        labs(y="Oil related Tweets percentage",
+             title = "Trump Oil related Tweets over time",
+             x="Year")+
+        ggthemes::theme_tufte()
+
+
+#t-test oil word vs brent oil price Before presidency
+
+trump_oil %>% filter(Period=="Before") %>% 
+        t.test(Brent~oil_keyword,data = .)
+
+#t-test oil word vs brent oil price after presidency
+
+trump_oil %>% filter(Period=="After") %>% 
+        t.test(Brent~oil_keyword,data = .)
+
+#t-test oil word vs WTI oil price Before presidency
+
+trump_oil %>% filter(Period=="Before") %>% 
+        t.test(WTI~oil_keyword,data = .)
+
+#t-test oil word vs WTI oil price After presidency
+
+trump_oil %>% filter(Period=="After") %>% 
+        t.test(WTI~oil_keyword,data = .)
+
+
+#t-test oil word vs Henry Hub gas price  Before presidency
+
+trump_oil %>% filter(Period=="Before") %>% 
+        t.test(Gas~oil_keyword,data = .)
+
+#t-test oil word vs Henry Hub gas price  After presidency
+
+trump_oil %>% filter(Period=="After") %>% 
+        t.test(Gas~oil_keyword,data = .)
 
 
 
+
+trump_oil %>% ggplot(.,aes(y=Brent,x=oil_keyword,fill=oil_keyword))+geom_boxplot(alpha=0.5)+
+        labs(title = "Brent Oil Prices vs Trump's Oil tweets",
+             x= "Oil Tweet",
+             y="Brent spot Oil Price (USD per barrel)")+
+        facet_grid(. ~ Period)+
+        ggthemes::theme_tufte()
+
+trump_oil %>% ggplot(.,aes(y=WTI,x=oil_keyword,fill=oil_keyword))+geom_boxplot(alpha=0.5)+
+        scale_fill_manual(values=c("blue","red"))+
+        labs(title = "WTI Oil Prices vs Trump's Oil tweets",
+             x= "Oil Tweet",
+             y="WTI spot Oil Price (USD per barrel)")+
+        facet_grid(. ~ Period)+
+        ggthemes::theme_tufte()
+
+trump_oil %>% ggplot(.,aes(y=Gas,x=oil_keyword,fill=oil_keyword))+geom_boxplot(alpha=0.5)+
+        labs(title = "Henry Hub Gas Prices vs Trump's Oil tweets",
+             x= "Oil Tweet",
+             y="Henry Hub spot Gas Prices (USD per TCF)")+
+        facet_grid(. ~ Period)+
+        ggthemes::theme_tufte()
+
+
+
+
+data.frame(table(cut(trump_oil$Brent,3),trump_oil$oil_keyword)) %>%
+        filter(Var2==TRUE) %>%
+        select(.,-Var2) %>%
+        dplyr::rename(.,Price_range=Var1,Tweets=Freq) %>%
+        knitr::kable()
+
+
+data.frame(table(cut(trump_oil$Brent,3),trump_oil$oil_keyword)) %>%
+        filter(Var2==TRUE) %>%
+        select(.,-Var2) %>%
+        dplyr::rename(.,Price_range=Var1,Tweets=Freq) %>% 
+        ggplot(aes(x=Price_range,y=Tweets,fill=Price_range))+geom_bar(stat="identity")+
+        labs(y="Trump Oil Tweets",
+             title = "Trump Tweets distribution by price oil range",
+             x="Oil price Ranges")+ggthemes::theme_tufte()
+
+
+chisq.test(table(cut(trump_oil$Brent,3),trump_oil$oil_keyword))
+
+
+data.frame(chisq.test(table(cut(trump_oil$Brent,3),trump_oil$oil_keyword))$expected) %>% 
+        select(.,TRUE.) %>% mutate(Price_range=rownames(.)) %>% dplyr::rename(.,Chisq_Expected_Tweets=TRUE.) %>%
+        select(.,Price_range,Chisq_Expected_Tweets) %>% knitr::kable()
+
+
+
+data.frame(chisq.test(table(cut(trump_oil$Brent,3),trump_oil$oil_keyword))$expected) %>% 
+        select(.,TRUE.) %>% mutate(Price_range=rownames(.)) %>% dplyr::rename(.,Tweets=TRUE.) %>%
+        select(.,Price_range,Tweets) %>%
+        ggplot(aes(x=Price_range,y=Tweets,fill=Price_range))+geom_bar(stat="identity")+
+        labs(y="Expected Tweets by Chi-square Dist.",
+             title = "Chi-square expected tweets distribution by price oil range",
+             x="Oil price Ranges")+ggthemes::theme_tufte()
+
+
+
+trump_oil %>% 
+        filter(Period=="Before") %>%
+        group_by(LAG) %>% 
+        summarise(n(),BrentP=mean(Brent,na.rm=T),WTIP=mean(WTI,na.rm=T),GasP=mean(Gas,na.rm=T),
+                  BrentSD=sd(Brent,na.rm=T),WTISD=sd(WTI,na.rm=T),GasSD=sd(Gas,na.rm=T)) %>% 
+        arrange(.,desc(BrentP)) %>% knitr::kable()
+
+trump_oil %>% 
+        filter(Period=="After") %>%
+        group_by(LAG) %>% 
+        summarise(n(),BrentP=mean(Brent,na.rm=T),WTIP=mean(WTI,na.rm=T),GasP=mean(Gas,na.rm=T),
+                  BrentSD=sd(Brent,na.rm=T),WTISD=sd(WTI,na.rm=T),GasSD=sd(Gas,na.rm=T)) %>% 
+        arrange(.,desc(BrentP)) %>% knitr::kable()
+
+
+
+
+trump_oil %>% group_by(Period,LAG) %>% 
+        summarise(BrentP=mean(Brent,na.rm=T),WTIP=mean(WTI,na.rm=T),GasP=mean(Gas,na.rm=T),
+                  BrentSD=sd(Brent,na.rm=T),WTISD=sd(WTI,na.rm=T),GasSD=sd(Gas,na.rm=T)) %>% 
+        arrange(.,desc(BrentP)) %>%
+        mutate(Lag_num=case_when(LAG=="Zero" ~ 0,
+                                 LAG=="One" ~ 1,
+                                 LAG=="Two" ~ 2,
+                                 LAG=="Three" ~ 3,
+                                 LAG=="Four" ~ 4,
+                                 LAG=="Five" ~ 5,
+                                 LAG=="Six" ~ 6,
+                                 LAG=="Seven" ~ 7,
+                                 LAG=="One_before" ~ -1,
+                                 LAG=="Two_before" ~ -2,
+                                 LAG=="Three_before" ~ -3,
+                                 LAG=="Four_before" ~ -4,
+                                 LAG=="Five_before" ~ -5,
+                                 LAG=="Six_before" ~ -6,
+                                 LAG=="Seven_before" ~ -7,
+                                 LAG=="No_oil_Tweet" ~ -8,))%>%
+        ggplot(.,aes(x=as.factor(Lag_num),y=BrentP,color=Period))+
+        geom_point(size=7,alpha=0.5)+
+        scale_color_manual(values=c("blue","red"))+
+        facet_grid(.~Period)+
+        geom_errorbar(aes(ymin=BrentP-BrentSD, ymax=BrentP+BrentSD), width=.2,
+                      position=position_dodge(0.05),alpha=0.3)+
+        labs(title = "Brent Oil Price vs Trump Oil tweets after he became president",
+             x="Lag (days)",
+             y="Brent Oil spot prices (USD per barrel)")+
+        ggthemes::theme_igray()
+
+
+
+
+
+trump_oil %>% group_by(Period,LAG) %>% 
+        summarise(BrentP=mean(Brent,na.rm=T),WTIP=mean(WTI,na.rm=T),GasP=mean(Gas,na.rm=T),
+                  BrentSD=sd(Brent,na.rm=T),WTISD=sd(WTI,na.rm=T),GasSD=sd(Gas,na.rm=T)) %>% 
+        arrange(.,desc(BrentP)) %>%
+        mutate(Lag_num=case_when(LAG=="Zero" ~ 0,
+                                 LAG=="One" ~ 1,
+                                 LAG=="Two" ~ 2,
+                                 LAG=="Three" ~ 3,
+                                 LAG=="Four" ~ 4,
+                                 LAG=="Five" ~ 5,
+                                 LAG=="Six" ~ 6,
+                                 LAG=="Seven" ~ 7,
+                                 LAG=="One_before" ~ -1,
+                                 LAG=="Two_before" ~ -2,
+                                 LAG=="Three_before" ~ -3,
+                                 LAG=="Four_before" ~ -4,
+                                 LAG=="Five_before" ~ -5,
+                                 LAG=="Six_before" ~ -6,
+                                 LAG=="Seven_before" ~ -7,
+                                 LAG=="No_oil_Tweet" ~ -8,))%>%
+        ggplot(.,aes(x=as.factor(Lag_num),y=WTIP,color=Period))+
+        scale_color_manual(values=c("darkgreen","purple"))+
+        geom_point(size=7,alpha=0.5)+
+        facet_grid(.~Period)+
+        geom_errorbar(aes(ymin=WTIP-WTISD, ymax=WTIP+WTISD), width=.2,
+                      position=position_dodge(0.05),color="black")+
+        labs(title = "WTI Oil Price vs Trump Oil tweets after he became president",
+             x="Lag (days)",
+             y="WTI Oil spot prices (USD per barrel)")+
+        ggthemes::theme_igray()
+
+
+
+
+trump_oil %>% group_by(Period,LAG) %>% 
+        summarise(BrentP=mean(Brent,na.rm=T),WTIP=mean(WTI,na.rm=T),GasP=mean(Gas,na.rm=T),
+                  BrentSD=sd(Brent,na.rm=T),WTISD=sd(WTI,na.rm=T),GasSD=sd(Gas,na.rm=T)) %>% 
+        arrange(.,desc(BrentP)) %>%
+        mutate(Lag_num=case_when(LAG=="Zero" ~ 0,
+                                 LAG=="One" ~ 1,
+                                 LAG=="Two" ~ 2,
+                                 LAG=="Three" ~ 3,
+                                 LAG=="Four" ~ 4,
+                                 LAG=="Five" ~ 5,
+                                 LAG=="Six" ~ 6,
+                                 LAG=="Seven" ~ 7,
+                                 LAG=="One_before" ~ -1,
+                                 LAG=="Two_before" ~ -2,
+                                 LAG=="Three_before" ~ -3,
+                                 LAG=="Four_before" ~ -4,
+                                 LAG=="Five_before" ~ -5,
+                                 LAG=="Six_before" ~ -6,
+                                 LAG=="Seven_before" ~ -7,
+                                 LAG=="No_oil_Tweet" ~ -8,))%>%
+        ggplot(.,aes(x=as.factor(Lag_num),y=GasP,color=Period))+
+        scale_color_manual(values=c("thistle4","steelblue4"))+
+        geom_point(size=7,alpha=0.5)+
+        facet_grid(.~Period)+
+        geom_errorbar(aes(ymin=GasP-GasSD, ymax=GasP+GasSD), width=.2,
+                      position=position_dodge(0.05))+
+        labs(title = "Henry Hub gas price vs Trump Oil tweets",
+             x="Lag (days)",
+             y="Henry Hub gas spot prices (USD per TCF)")+
+        ggthemes::theme_igray()
+
+
+trump_oil %>% filter(Period=="After") %>%
+        aov(Brent~LAG,data = .) %>% summary()
+
+
+
+
+a<-trump_oil %>% filter(Period=="After") %>%
+        filter(LAG=="Zero" | LAG=="Seven") %>% 
+        summarise(pval_Brent = t.test(Brent ~ LAG)$p.value,
+                  adj_pval_Brent = ifelse(t.test(Brent ~ LAG)$p.value*15 > (1),1,t.test(Brent ~ LAG)$p.value*15),
+                  pval_WTI = t.test(WTI ~ LAG)$p.value,
+                  adj_pval_WTI = ifelse(t.test(WTI ~ LAG)$p.value*15 > (1),1,t.test(WTI ~ LAG)$p.value*15),
+                  pval_Gas = t.test(Gas ~ LAG)$p.value,
+                  adj_pval_Gas = ifelse(t.test(Gas ~ LAG)$p.value*15 > (1),1,t.test(Gas ~ LAG)$p.value*15))
+
+b<-trump_oil %>% filter(Period=="After") %>%
+        filter(LAG=="Zero" | LAG=="Six") %>% 
+        summarise(pval_Brent = t.test(Brent ~ LAG)$p.value,
+                  adj_pval_Brent = ifelse(t.test(Brent ~ LAG)$p.value*15 > (1),1,t.test(Brent ~ LAG)$p.value*15),
+                  pval_WTI = t.test(WTI ~ LAG)$p.value,
+                  adj_pval_WTI = ifelse(t.test(WTI ~ LAG)$p.value*15 > (1),1,t.test(WTI ~ LAG)$p.value*15),
+                  pval_Gas = t.test(Gas ~ LAG)$p.value,
+                  adj_pval_Gas = ifelse(t.test(Gas ~ LAG)$p.value*15 > (1),1,t.test(Gas ~ LAG)$p.value*15))
+
+c<-trump_oil %>% filter(Period=="After") %>%
+        filter(LAG=="Zero" | LAG=="Five") %>% 
+        summarise(pval_Brent = t.test(Brent ~ LAG)$p.value,
+                  adj_pval_Brent = ifelse(t.test(Brent ~ LAG)$p.value*15 > (1),1,t.test(Brent ~ LAG)$p.value*15),
+                  pval_WTI = t.test(WTI ~ LAG)$p.value,
+                  adj_pval_WTI = ifelse(t.test(WTI ~ LAG)$p.value*15 > (1),1,t.test(WTI ~ LAG)$p.value*15),
+                  pval_Gas = t.test(Gas ~ LAG)$p.value,
+                  adj_pval_Gas = ifelse(t.test(Gas ~ LAG)$p.value*15 > (1),1,t.test(Gas ~ LAG)$p.value*15))
+
+d<-trump_oil %>% filter(Period=="After") %>%
+        filter(LAG=="Zero" | LAG=="Four") %>% 
+        summarise(pval_Brent = t.test(Brent ~ LAG)$p.value,
+                  adj_pval_Brent = ifelse(t.test(Brent ~ LAG)$p.value*15 > (1),1,t.test(Brent ~ LAG)$p.value*15),
+                  pval_WTI = t.test(WTI ~ LAG)$p.value,
+                  adj_pval_WTI = ifelse(t.test(WTI ~ LAG)$p.value*15 > (1),1,t.test(WTI ~ LAG)$p.value*15),
+                  pval_Gas = t.test(Gas ~ LAG)$p.value,
+                  adj_pval_Gas = ifelse(t.test(Gas ~ LAG)$p.value*15 > (1),1,t.test(Gas ~ LAG)$p.value*15))
+
+e<-trump_oil %>% filter(Period=="After") %>%
+        filter(LAG=="Zero" | LAG=="Three") %>% 
+        summarise(pval_Brent = t.test(Brent ~ LAG)$p.value,
+                  adj_pval_Brent = ifelse(t.test(Brent ~ LAG)$p.value*15 > (1),1,t.test(Brent ~ LAG)$p.value*15),
+                  pval_WTI = t.test(WTI ~ LAG)$p.value,
+                  adj_pval_WTI = ifelse(t.test(WTI ~ LAG)$p.value*15 > (1),1,t.test(WTI ~ LAG)$p.value*15),
+                  pval_Gas = t.test(Gas ~ LAG)$p.value,
+                  adj_pval_Gas = ifelse(t.test(Gas ~ LAG)$p.value*15 > (1),1,t.test(Gas ~ LAG)$p.value*15))
+
+f<-trump_oil %>% filter(Period=="After") %>%
+        filter(LAG=="Zero" | LAG=="Two") %>% 
+        summarise(pval_Brent = t.test(Brent ~ LAG)$p.value,
+                  adj_pval_Brent = ifelse(t.test(Brent ~ LAG)$p.value*15 > (1),1,t.test(Brent ~ LAG)$p.value*15),
+                  pval_WTI = t.test(WTI ~ LAG)$p.value,
+                  adj_pval_WTI = ifelse(t.test(WTI ~ LAG)$p.value*15 > (1),1,t.test(WTI ~ LAG)$p.value*15),
+                  pval_Gas = t.test(Gas ~ LAG)$p.value,
+                  adj_pval_Gas = ifelse(t.test(Gas ~ LAG)$p.value*15 > (1),1,t.test(Gas ~ LAG)$p.value*15))
+
+g<-trump_oil %>% filter(Period=="After") %>%
+        filter(LAG=="Zero" | LAG=="One") %>% 
+        summarise(pval_Brent = t.test(Brent ~ LAG)$p.value,
+                   adj_pval_Brent = ifelse(t.test(Brent ~ LAG)$p.value*15 > (1),1,t.test(Brent ~ LAG)$p.value*15),
+                   pval_WTI = t.test(WTI ~ LAG)$p.value,
+                   adj_pval_WTI = ifelse(t.test(WTI ~ LAG)$p.value*15 > (1),1,t.test(WTI ~ LAG)$p.value*15),
+                   pval_Gas = t.test(Gas ~ LAG)$p.value,
+                   adj_pval_Gas = ifelse(t.test(Gas ~ LAG)$p.value*15 > (1),1,t.test(Gas ~ LAG)$p.value*15))
+
+bind_rows(g,f,e,d,c,b,a) %>% mutate(Lag=seq(1:7))
+
+
+#granger causality test after
+
+
+Brent_after <- trump_oil %>% filter(Period=="After") %>% select(Brent)
+
+Brent_after <- Brent_after$Brent
+
+WTI_after <- trump_oil %>% filter(Period=="After") %>% select(WTI)
+
+WTI_after <- WTI_after$WTI
+
+Gas_after<- trump_oil %>% filter(Period=="After") %>% select(Gas)
+
+Gas_after<-Gas_after$Gas
+
+Tweet_oil_after <- trump_oil %>% filter(Period=="After") %>% select(oil_word_count)
+
+Tweet_oil_after <- Tweet_oil_after$oil_word_count
+
+
+granger_causality_brent <- map_dbl(1:10,  function(k){
+        model <- lmtest::grangertest(Brent_after~Tweet_oil_after,order=k,na.action=na.omit)
+        model$`Pr(>F)`[2]
+}) 
+
+(Granger_causal_test_after <- data.frame(
+        Lag = c(1:10) ,
+        pvalue_Brent = granger_causality_brent
+        
+))
+
+granger_causality_wti <- map_dbl(1:10,  function(k){
+        model <- lmtest::grangertest(WTI_after~Tweet_oil_after,order=k,na.action=na.omit)
+        model$`Pr(>F)`[2]
+}) 
+
+Granger_causal_test_after$pvalue_WTI <- granger_causality_wti
+
+granger_causality_gas <- map_dbl(1:10,  function(k){
+        model <- lmtest::grangertest(Gas_after~Tweet_oil_after,order=k,na.action=na.omit)
+        model$`Pr(>F)`[2]
+}) 
+
+Granger_causal_test_after$pvalue_Gas <- granger_causality_gas
+
+Granger_causal_test_after %>% knitr::kable()
+
+
+#granger causality test before
+
+Brent_before <- trump_oil %>% filter(Period=="Before") %>% select(Brent)
+
+Brent_before <- Brent_before$Brent
+
+WTI_before <- trump_oil %>% filter(Period=="Before") %>% select(WTI)
+
+WTI_before <- WTI_before$WTI
+
+Gas_before<- trump_oil %>% filter(Period=="Before") %>% select(Gas)
+
+Gas_before<-Gas_before$Gas
+
+Tweet_oil_before <- trump_oil %>% filter(Period=="Before") %>% select(oil_word_count)
+
+Tweet_oil_before <- Tweet_oil_before$oil_word_count
+
+
+granger_causality_brent_before <- map_dbl(1:10,  function(k){
+        model <- lmtest::grangertest(Brent_before~Tweet_oil_before,order=k,na.action=na.omit)
+        model$`Pr(>F)`[2]
+}) 
+
+(Granger_causal_test_before <- data.frame(
+        Lag = c(1:10) ,
+        pvalue_Brent = granger_causality_brent_before
+        
+))
+
+granger_causality_wti_before <- map_dbl(1:10,  function(k){
+        model <- lmtest::grangertest(WTI_before~Tweet_oil_before,order=k,na.action=na.omit)
+        model$`Pr(>F)`[2]
+}) 
+
+Granger_causal_test_before$pvalue_WTI <- granger_causality_wti_before
+
+granger_causality_gas_before <- map_dbl(1:10,  function(k){
+        model <- lmtest::grangertest(Gas_before~Tweet_oil_before,order=k,na.action=na.omit)
+        model$`Pr(>F)`[2]
+}) 
+
+Granger_causal_test_before$pvalue_Gas <- granger_causality_gas_before
+
+Granger_causal_test_before %>% knitr::kable()
+
+
+bind_rows(Granger_causal_test_before,Granger_causal_test_after,.id = "Period") %>%
+        mutate(Period=case_when(Period==1 ~ "Before", Period==2 ~ "After"))  %>% 
+        rename(Gas=pvalue_Gas,Brent=pvalue_Brent,WTI=pvalue_WTI) %>%
+        tidyr::gather(Brent,WTI,Gas,key="Commodity",value="Pvalue") %>%
+        ggplot(.,aes(x=as.factor(Lag),y=Pvalue,color=Commodity,shape=Commodity))+
+        scale_color_manual(values=c("Blue","Red","Black"))+
+        geom_point(size=3,alpha=0.8)+
+        geom_line(aes(x=Lag,y=Pvalue,color=Commodity),alpha=0.8)+
+        ylim(0,1)+
+        geom_hline(yintercept = 0.05,color="black",linetype = 'dashed')+
+        geom_hline(yintercept = 0.1,color="red",linetype = 'dashed')+
+        labs(title = "Granger causality test results commodity prices as function of trump oil tweets after 2016",
+             x="Lag (Days)",
+             y="p-value of Granger causality test")+
+        facet_grid(.~Period)+
+        ggthemes::theme_igray()
+        

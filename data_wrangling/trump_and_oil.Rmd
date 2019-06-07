@@ -1,0 +1,600 @@
+---
+title: "Initial Exploratory data analysis trump and oil"
+author: "Luis Fernando Perez Armas"
+date: "6/6/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(lubridate)
+library(stringr)
+library(purrr)
+library(ggplot2)
+library(zoo)
+library(lmtest)
+library(forecast)
+
+```
+
+# Data Source and wrangling
+
+oil related data was downloaded from the webpage of the Energy information administration eia:
+
+- Brent spot oil prices historical data [eia Brent](https://www.eia.gov/dnav/pet/hist/rbrteD.htm)
+- West texas intermediate spot oil prices historical data [eia WTI](https://www.eia.gov/dnav/pet/hist/RWTCD.htm)
+- Henry Hub spot gas prices historical data [eia Henry Hub](https://www.eia.gov/dnav/ng/hist/rngwhhdD.htm)
+
+President Donald trump tweets from @realdonaltrump where obtained thanks to an open repo on the following  [address](http://www.trumptwitterarchive.com/archive), they can also be downloaded on .jason format from the following github [repository](https://github.com/bpb27/trump_tweet_data_archive) and [repository](https://github.com/ceche1212/Trump_paper/tree/master/raw_data/tweets)
+
+all the data wrangling code can be found on the following github [repository](https://github.com/ceche1212/Trump_paper/tree/master/data_wrangling)
+
+oil data and donald trump tweets were joined and grouped by day, tweets were searched looking for the following oil related words or combination of words:
+
+- oil 
+- gas 
+- opec
+- pipeline
+- barrel
+- oil price
+- drilling
+- oil production
+- gas price
+- sanctions
+- sanctions
+- russia
+
+The result is an unified data set of 3684 observations and 10 variables
+
+```{r}
+
+load("trump_oil_all.RData")
+
+dim(trump_oil)
+
+names(trump_oil)
+
+```
+
+# Data codebook
+
+Description of variables, units of measurements, data category and the source of data, can be found on the tables below:
+
+**Codebook Varible Description**
+
+Variable Name      | Description
+-------------------|------------------------------------------------------------------------------------
+Date               | Date of the observation (date variable, format year-month-day)
+Oil_word_count     | Volumen of tweets that contains an oil related words (numeric)
+oil_keyword        | logical variable that identifies if the observation is oil related (Boolean)
+Tweet_volume       | Total number of tweets made by donal trump on a single day (numeric)
+RT                 | Number of re-tweets (numeric)
+Brent              | Brent spot oil price (numeric, in USD per barrel)
+WTI                | WTI spot oil price (numeric, in USD per barrel)
+Gas                | Henry Hub spot gas price (numeric, in USD per TCF or trillion cubic feet)
+LAG                | Variable that identifies the relative position of a day compared to the neares day of an oil tweet (categorical)
+Period             | Logical variable that identifies if the tweet corresponds to a date earlier than 2016 (Boolean)
+
+
+# Data exploration
+
+## Oil tweets and year distribution
+
+one of the first aspects to look is the distribution of oil related tweets over time
+
+```{r,fig.align='center'}
+
+trump_oil %>% mutate(Year=year(date)) %>%
+        group_by(Year) %>%
+        summarise(Tweet_Vol=sum(Tweet_volume,na.rm=TRUE),
+                  Oil_Tweets=sum(oil_keyword==TRUE,na.rm=TRUE),
+                  percentage_Oil_Tweets=(sum(oil_keyword==TRUE,na.rm=TRUE)/sum(Tweet_volume,na.rm = TRUE))*100) %>%
+        knitr::kable()
+
+
+trump_oil %>% mutate(Year=year(date)) %>%
+        group_by(Year) %>%
+        summarise(Tweet_Vol=sum(Tweet_volume,na.rm=TRUE),
+                  Oil_Tweets=sum(oil_keyword==TRUE,na.rm=TRUE),
+                  percentage_Oil_Tweets=(sum(oil_keyword==TRUE,na.rm=TRUE)/sum(Tweet_volume,na.rm = TRUE))*100) %>%
+        ggplot(.,aes(y=Oil_Tweets,x=as.factor(Year)))+
+        geom_bar(stat = "identity",fill="red",alpha="0.4",color="blue")+
+        labs(y="Oil related Tweets",
+             title = "Trump Oil related Tweets over time",
+             x="Year")+
+        ggthemes::theme_tufte()
+
+
+trump_oil %>% mutate(Year=year(date)) %>%
+        group_by(Year) %>%
+        summarise(Tweet_Vol=sum(Tweet_volume,na.rm=TRUE),
+                  Oil_Tweets=sum(oil_keyword==TRUE,na.rm=TRUE),
+                  percentage_Oil_Tweets=(sum(oil_keyword==TRUE,na.rm=TRUE)/sum(Tweet_volume,na.rm = TRUE))*100) %>%
+        ggplot(.,aes(y=percentage_Oil_Tweets,x=as.factor(Year)))+
+        geom_bar(stat = "identity",fill="blue",alpha="0.4",color="red")+
+        labs(y="Oil related Tweets percentage",
+             title = "Percentage of Trump Oil related Tweets over time",
+             x="Year")+
+        ggthemes::theme_tufte()
+
+```
+
+by look at the trend of the volume of oil related tweets it is possible to claim that the number has increase over the pass of the years, altought by normalizing this quantity by the total volume of tweets, the picture changes and in fact, on recent years the percentage of tweets related to oil has stabilized around 3% and previously was in fact decreasing over time, up until 2017.
+
+## Oil tweets and price 
+
+A very interesting question and one of the most fundamentals of this analysis is if there is a significant difference in prices when there is an oil tweet of donald trump. This question can be answered by using a simple t-test.
+
+```{r,fig.align='center'}
+
+#t-test oil word vs brent oil price Before presidency
+
+trump_oil %>% filter(Period=="Before") %>% 
+        t.test(Brent~oil_keyword,data = .)
+
+#t-test oil word vs brent oil price after presidency
+
+trump_oil %>% filter(Period=="After") %>% 
+        t.test(Brent~oil_keyword,data = .)
+
+trump_oil %>% ggplot(.,aes(y=Brent,x=oil_keyword,fill=oil_keyword))+geom_boxplot(alpha=0.5)+
+        labs(title = "Brent Oil Prices vs Trump's Oil tweets",
+             x= "Oil Tweet",
+             y="Brent spot Oil Price (USD per barrel)")+
+        facet_grid(. ~ Period)+
+        ggthemes::theme_tufte()
+
+
+#t-test oil word vs WTI oil price Before presidency
+
+trump_oil %>% filter(Period=="Before") %>% 
+        t.test(WTI~oil_keyword,data = .)
+
+#t-test oil word vs WTI oil price After presidency
+
+trump_oil %>% filter(Period=="After") %>% 
+        t.test(WTI~oil_keyword,data = .)
+
+
+trump_oil %>% ggplot(.,aes(y=WTI,x=oil_keyword,fill=oil_keyword))+geom_boxplot(alpha=0.5)+
+        scale_fill_manual(values=c("blue","red"))+
+        labs(title = "WTI Oil Prices vs Trump's Oil tweets",
+             x= "Oil Tweet",
+             y="WTI spot Oil Price (USD per barrel)")+
+        facet_grid(. ~ Period)+
+        ggthemes::theme_tufte()
+
+trump_oil %>% filter(Period=="Before") %>% 
+        t.test(Gas~oil_keyword,data = .)
+
+#t-test oil word vs Henry Hub gas price  After presidency
+
+trump_oil %>% filter(Period=="After") %>% 
+        t.test(Gas~oil_keyword,data = .)
+
+trump_oil %>% ggplot(.,aes(y=Gas,x=oil_keyword,fill=oil_keyword))+geom_boxplot(alpha=0.5)+
+        scale_fill_manual(values=c("Darkblue","darkred"))+
+        labs(title = "Henry Hub Gas Prices vs Trump's Oil tweets",
+             x= "Oil Tweet",
+             y="Henry Hub spot Gas Prices (USD per TCF)")+
+        facet_grid(. ~ Period)+
+        ggthemes::theme_tufte()
+
+```
+
+For both Brent and WTI oil prices there is indeed a significative difference depending on wether trump tweets about oil or not, prices are lower when there is no oil tweet, and such behavior applies for year before he became president and after. Henry hub gas prices shows as well a significative difference in relationship with trumo oil tweets, however before trumo became a president, and in contrast with the behavior of oil, prices where in higher when there was no oil tweet and lower on oil related tweet days, such trend or difference changed after he became president. 
+
+## Oil tweets and price distribution
+
+It is interesting as well to evaluate if the oil tweeting patterns of president trump are affected by price, and determine if he tends to tweet about oil on higher or lower prices.
+
+```{r,fig.align='center'}
+
+data.frame(table(cut(trump_oil$Brent,3),trump_oil$oil_keyword)) %>%
+        filter(Var2==TRUE) %>%
+        select(.,-Var2) %>%
+        dplyr::rename(.,Price_range=Var1,Tweets=Freq) %>%
+        knitr::kable()
+
+
+data.frame(table(cut(trump_oil$Brent,3),trump_oil$oil_keyword)) %>%
+        filter(Var2==TRUE) %>%
+        select(.,-Var2) %>%
+        dplyr::rename(.,Price_range=Var1,Tweets=Freq) %>% 
+        ggplot(aes(x=Price_range,y=Tweets,fill=Price_range))+geom_bar(stat="identity")+
+        labs(y="Trump Oil Tweets",
+             title = "Trump Tweets distribution by price oil range",
+             x="Oil price Ranges")+ggthemes::theme_tufte()
+
+```
+
+It seems that higher prices are more prone to have more oil related tweets, altought in order to prove if there is a dependency between donald trump oil tweets and prices we will use a chi-square independence test.
+
+```{r,fig.align='center'}
+
+chisq.test(table(cut(trump_oil$Brent,3),trump_oil$oil_keyword))
+
+
+data.frame(chisq.test(table(cut(trump_oil$Brent,3),trump_oil$oil_keyword))$expected) %>% 
+        select(.,TRUE.) %>% mutate(Price_range=rownames(.)) %>% dplyr::rename(.,Chisq_Expected_Tweets=TRUE.) %>%
+        select(.,Price_range,Chisq_Expected_Tweets) %>% knitr::kable()
+
+
+
+data.frame(chisq.test(table(cut(trump_oil$Brent,3),trump_oil$oil_keyword))$expected) %>% 
+        select(.,TRUE.) %>% mutate(Price_range=rownames(.)) %>% dplyr::rename(.,Tweets=TRUE.) %>%
+        select(.,Price_range,Tweets) %>%
+        ggplot(aes(x=Price_range,y=Tweets,fill=Price_range))+geom_bar(stat="identity")+
+        labs(y="Expected Tweets by Chi-square Dist.",
+             title = "Chi-square expected tweets distribution by price oil range",
+             x="Oil price Ranges")+ggthemes::theme_tufte()
+
+```
+
+The chi-square independence test, shows that there is indeed a dependency between prices and oil tweets and that trumps distribution presents a significative difference with the chi-square expected independent distribution, in reality donald trumo has more oil related tweets in the higher prices bin and less than expected on the lower prices bin, making it possible to assume that Trump oil tweet behavior is a reaction to high oil prices.
+
+## Oil prices and its behavior before and after an oil tweet
+
+So far, high oil prices and an oil related tweet seems to be correlated, altouhgt it is an interesting correlation indeed, more interesting might be to evaluate the behavior of prices before and after an oil related tweet, and analyze the effect that these tweets might have on the market of this commodities, such evaluation will be done on two different periods, before and after the year on which donald trump became president.
+
+```{r,fig.align='center'}
+
+trump_oil %>% 
+        filter(Period=="Before") %>%
+        group_by(LAG) %>% 
+        summarise(n(),BrentP=mean(Brent,na.rm=T),WTIP=mean(WTI,na.rm=T),GasP=mean(Gas,na.rm=T),
+                  BrentSD=sd(Brent,na.rm=T),WTISD=sd(WTI,na.rm=T),GasSD=sd(Gas,na.rm=T)) %>% 
+        arrange(.,desc(BrentP)) %>% knitr::kable()
+
+trump_oil %>% 
+        filter(Period=="After") %>%
+        group_by(LAG) %>% 
+        summarise(n(),BrentP=mean(Brent,na.rm=T),WTIP=mean(WTI,na.rm=T),GasP=mean(Gas,na.rm=T),
+                  BrentSD=sd(Brent,na.rm=T),WTISD=sd(WTI,na.rm=T),GasSD=sd(Gas,na.rm=T)) %>% 
+        arrange(.,desc(BrentP)) %>% knitr::kable()
+
+```
+
+The tables with different statistics shows some interesting results, on the effect of tweets on prices, however it might be more interesting to analyze such data with the use of graphics and for each commodity.
+
+```{r,fig.align='center'}
+
+#Brent oil prices behavior
+
+trump_oil %>% group_by(Period,LAG) %>% 
+        summarise(BrentP=mean(Brent,na.rm=T),WTIP=mean(WTI,na.rm=T),GasP=mean(Gas,na.rm=T),
+                  BrentSD=sd(Brent,na.rm=T),WTISD=sd(WTI,na.rm=T),GasSD=sd(Gas,na.rm=T)) %>% 
+        arrange(.,desc(BrentP)) %>%
+        mutate(Lag_num=case_when(LAG=="Zero" ~ 0,
+                                 LAG=="One" ~ 1,
+                                 LAG=="Two" ~ 2,
+                                 LAG=="Three" ~ 3,
+                                 LAG=="Four" ~ 4,
+                                 LAG=="Five" ~ 5,
+                                 LAG=="Six" ~ 6,
+                                 LAG=="Seven" ~ 7,
+                                 LAG=="One_before" ~ -1,
+                                 LAG=="Two_before" ~ -2,
+                                 LAG=="Three_before" ~ -3,
+                                 LAG=="Four_before" ~ -4,
+                                 LAG=="Five_before" ~ -5,
+                                 LAG=="Six_before" ~ -6,
+                                 LAG=="Seven_before" ~ -7,
+                                 LAG=="No_oil_Tweet" ~ -8,))%>%
+        ggplot(.,aes(x=as.factor(Lag_num),y=BrentP,color=Period))+
+        geom_point(size=7,alpha=0.5)+
+        scale_color_manual(values=c("blue","red"))+
+        facet_grid(.~Period)+
+        geom_errorbar(aes(ymin=BrentP-BrentSD, ymax=BrentP+BrentSD), width=.2,
+                      position=position_dodge(0.05),color="black")+
+        labs(title = "Brent Oil Price vs Trump Oil tweets",
+             x="Lag (days)",
+             y="Brent Oil spot prices (USD per barrel)")+
+        ggthemes::theme_igray()
+
+```
+
+For Brent prices the graph shows various interesting points:
+
+- Brent Prices before Trumps presidency were higher and more variable in comparisson with prices before.
+- Before Trumps presidency, Brent prices seemed to oscilate equally before and after an oil tweet, without a clear trend after an oil tweet.
+- After Trump became president, Brent prices seem to show a clear trend after an oil tweet, on which they continuously descend for the next seven days.
+- Before Trumps presidency, the lag = 0 or the day of an oil tweet did not necessarilly matched the average maximum prices.
+- After Trumps presidency, the lag = 0 or the day of an oil tweet matches the average maximum prices.
+
+```{r,fig.align='center'}
+
+trump_oil %>% group_by(Period,LAG) %>% 
+        summarise(BrentP=mean(Brent,na.rm=T),WTIP=mean(WTI,na.rm=T),GasP=mean(Gas,na.rm=T),
+                  BrentSD=sd(Brent,na.rm=T),WTISD=sd(WTI,na.rm=T),GasSD=sd(Gas,na.rm=T)) %>% 
+        arrange(.,desc(BrentP)) %>%
+        mutate(Lag_num=case_when(LAG=="Zero" ~ 0,
+                                 LAG=="One" ~ 1,
+                                 LAG=="Two" ~ 2,
+                                 LAG=="Three" ~ 3,
+                                 LAG=="Four" ~ 4,
+                                 LAG=="Five" ~ 5,
+                                 LAG=="Six" ~ 6,
+                                 LAG=="Seven" ~ 7,
+                                 LAG=="One_before" ~ -1,
+                                 LAG=="Two_before" ~ -2,
+                                 LAG=="Three_before" ~ -3,
+                                 LAG=="Four_before" ~ -4,
+                                 LAG=="Five_before" ~ -5,
+                                 LAG=="Six_before" ~ -6,
+                                 LAG=="Seven_before" ~ -7,
+                                 LAG=="No_oil_Tweet" ~ -8,))%>%
+        ggplot(.,aes(x=as.factor(Lag_num),y=WTIP,color=Period))+
+        scale_color_manual(values=c("darkgreen","purple"))+
+        geom_point(size=7,alpha=0.5)+
+        facet_grid(.~Period)+
+        geom_errorbar(aes(ymin=WTIP-WTISD, ymax=WTIP+WTISD), width=.2,
+                      position=position_dodge(0.05),color="black")+
+        labs(title = "WTI Oil Price vs Trump Oil tweets",
+             x="Lag (days)",
+             y="WTI Oil spot prices (USD per barrel)")+
+        ggthemes::theme_igray()
+
+```
+
+WTI oil prices shows a similar trend as the Brent oil prices.
+
+```{r,fig.align='center'}
+
+trump_oil %>% group_by(Period,LAG) %>% 
+        summarise(BrentP=mean(Brent,na.rm=T),WTIP=mean(WTI,na.rm=T),GasP=mean(Gas,na.rm=T),
+                  BrentSD=sd(Brent,na.rm=T),WTISD=sd(WTI,na.rm=T),GasSD=sd(Gas,na.rm=T)) %>% 
+        arrange(.,desc(BrentP)) %>%
+        mutate(Lag_num=case_when(LAG=="Zero" ~ 0,
+                                 LAG=="One" ~ 1,
+                                 LAG=="Two" ~ 2,
+                                 LAG=="Three" ~ 3,
+                                 LAG=="Four" ~ 4,
+                                 LAG=="Five" ~ 5,
+                                 LAG=="Six" ~ 6,
+                                 LAG=="Seven" ~ 7,
+                                 LAG=="One_before" ~ -1,
+                                 LAG=="Two_before" ~ -2,
+                                 LAG=="Three_before" ~ -3,
+                                 LAG=="Four_before" ~ -4,
+                                 LAG=="Five_before" ~ -5,
+                                 LAG=="Six_before" ~ -6,
+                                 LAG=="Seven_before" ~ -7,
+                                 LAG=="No_oil_Tweet" ~ -8,))%>%
+        ggplot(.,aes(x=as.factor(Lag_num),y=GasP,color=Period))+
+        scale_color_manual(values=c("thistle4","steelblue4"))+
+        geom_point(size=7,alpha=0.5)+
+        facet_grid(.~Period)+
+        geom_errorbar(aes(ymin=GasP-GasSD, ymax=GasP+GasSD), width=.2,
+                      position=position_dodge(0.05))+
+        labs(title = "Henry Hub gas price vs Trump Oil tweets",
+             x="Lag (days)",
+             y="Henry Hub gas spot prices (USD per TCF)")+
+        ggthemes::theme_igray()
+
+
+```
+
+Henry hub gas prices dont seem to show a clear different in behavior between the period before and after Trumps presidency.
+
+## Is the difference in prices and most notorious lags significative?
+
+```{r}
+
+#Anova test for Brent oil prices and Lags, after trump presidency
+
+trump_oil %>% filter(Period=="After") %>%
+        aov(Brent~LAG,data = .) %>% summary()
+
+#Anova test for WTI oil prices and Lags, after trump presidency
+
+trump_oil %>% filter(Period=="After") %>%
+        aov(WTI~LAG,data = .) %>% summary()
+
+#Anova test for Henry hub gas prices and Lags, after trump presidency
+
+trump_oil %>% filter(Period=="After") %>%
+        aov(WTI~LAG,data = .) %>% summary()
+
+```
+
+The anova test, performed on the three commodities show that there is indeed a significative difference between the groups, the next step will be to test individually each of the future lags (from zero to seven days after) against zero for the different prices commodities, but correcting the obtained p-values with the Bonferroni correction of 15, since there are 16 different lag categories (seven days before, seven days after, the zero and the No oil tweet category).These test will be conducted first on data after 2016 on which donal trump became president.
+
+
+```{r,echo=FALSE}
+
+a<-trump_oil %>% filter(Period=="After") %>%
+        filter(LAG=="Zero" | LAG=="Seven") %>% 
+        summarise(pval_Brent = t.test(Brent ~ LAG)$p.value,
+                  adj_pval_Brent = ifelse(t.test(Brent ~ LAG)$p.value*15 > (1),1,t.test(Brent ~ LAG)$p.value*15),
+                  pval_WTI = t.test(WTI ~ LAG)$p.value,
+                  adj_pval_WTI = ifelse(t.test(WTI ~ LAG)$p.value*15 > (1),1,t.test(WTI ~ LAG)$p.value*15),
+                  pval_Gas = t.test(Gas ~ LAG)$p.value,
+                  adj_pval_Gas = ifelse(t.test(Gas ~ LAG)$p.value*15 > (1),1,t.test(Gas ~ LAG)$p.value*15))
+
+b<-trump_oil %>% filter(Period=="After") %>%
+        filter(LAG=="Zero" | LAG=="Six") %>% 
+        summarise(pval_Brent = t.test(Brent ~ LAG)$p.value,
+                  adj_pval_Brent = ifelse(t.test(Brent ~ LAG)$p.value*15 > (1),1,t.test(Brent ~ LAG)$p.value*15),
+                  pval_WTI = t.test(WTI ~ LAG)$p.value,
+                  adj_pval_WTI = ifelse(t.test(WTI ~ LAG)$p.value*15 > (1),1,t.test(WTI ~ LAG)$p.value*15),
+                  pval_Gas = t.test(Gas ~ LAG)$p.value,
+                  adj_pval_Gas = ifelse(t.test(Gas ~ LAG)$p.value*15 > (1),1,t.test(Gas ~ LAG)$p.value*15))
+
+c<-trump_oil %>% filter(Period=="After") %>%
+        filter(LAG=="Zero" | LAG=="Five") %>% 
+        summarise(pval_Brent = t.test(Brent ~ LAG)$p.value,
+                  adj_pval_Brent = ifelse(t.test(Brent ~ LAG)$p.value*15 > (1),1,t.test(Brent ~ LAG)$p.value*15),
+                  pval_WTI = t.test(WTI ~ LAG)$p.value,
+                  adj_pval_WTI = ifelse(t.test(WTI ~ LAG)$p.value*15 > (1),1,t.test(WTI ~ LAG)$p.value*15),
+                  pval_Gas = t.test(Gas ~ LAG)$p.value,
+                  adj_pval_Gas = ifelse(t.test(Gas ~ LAG)$p.value*15 > (1),1,t.test(Gas ~ LAG)$p.value*15))
+
+d<-trump_oil %>% filter(Period=="After") %>%
+        filter(LAG=="Zero" | LAG=="Four") %>% 
+        summarise(pval_Brent = t.test(Brent ~ LAG)$p.value,
+                  adj_pval_Brent = ifelse(t.test(Brent ~ LAG)$p.value*15 > (1),1,t.test(Brent ~ LAG)$p.value*15),
+                  pval_WTI = t.test(WTI ~ LAG)$p.value,
+                  adj_pval_WTI = ifelse(t.test(WTI ~ LAG)$p.value*15 > (1),1,t.test(WTI ~ LAG)$p.value*15),
+                  pval_Gas = t.test(Gas ~ LAG)$p.value,
+                  adj_pval_Gas = ifelse(t.test(Gas ~ LAG)$p.value*15 > (1),1,t.test(Gas ~ LAG)$p.value*15))
+
+e<-trump_oil %>% filter(Period=="After") %>%
+        filter(LAG=="Zero" | LAG=="Three") %>% 
+        summarise(pval_Brent = t.test(Brent ~ LAG)$p.value,
+                  adj_pval_Brent = ifelse(t.test(Brent ~ LAG)$p.value*15 > (1),1,t.test(Brent ~ LAG)$p.value*15),
+                  pval_WTI = t.test(WTI ~ LAG)$p.value,
+                  adj_pval_WTI = ifelse(t.test(WTI ~ LAG)$p.value*15 > (1),1,t.test(WTI ~ LAG)$p.value*15),
+                  pval_Gas = t.test(Gas ~ LAG)$p.value,
+                  adj_pval_Gas = ifelse(t.test(Gas ~ LAG)$p.value*15 > (1),1,t.test(Gas ~ LAG)$p.value*15))
+
+f<-trump_oil %>% filter(Period=="After") %>%
+        filter(LAG=="Zero" | LAG=="Two") %>% 
+        summarise(pval_Brent = t.test(Brent ~ LAG)$p.value,
+                  adj_pval_Brent = ifelse(t.test(Brent ~ LAG)$p.value*15 > (1),1,t.test(Brent ~ LAG)$p.value*15),
+                  pval_WTI = t.test(WTI ~ LAG)$p.value,
+                  adj_pval_WTI = ifelse(t.test(WTI ~ LAG)$p.value*15 > (1),1,t.test(WTI ~ LAG)$p.value*15),
+                  pval_Gas = t.test(Gas ~ LAG)$p.value,
+                  adj_pval_Gas = ifelse(t.test(Gas ~ LAG)$p.value*15 > (1),1,t.test(Gas ~ LAG)$p.value*15))
+
+g<-trump_oil %>% filter(Period=="After") %>%
+        filter(LAG=="Zero" | LAG=="One") %>% 
+        summarise(pval_Brent = t.test(Brent ~ LAG)$p.value,
+                   adj_pval_Brent = ifelse(t.test(Brent ~ LAG)$p.value*15 > (1),1,t.test(Brent ~ LAG)$p.value*15),
+                   pval_WTI = t.test(WTI ~ LAG)$p.value,
+                   adj_pval_WTI = ifelse(t.test(WTI ~ LAG)$p.value*15 > (1),1,t.test(WTI ~ LAG)$p.value*15),
+                   pval_Gas = t.test(Gas ~ LAG)$p.value,
+                   adj_pval_Gas = ifelse(t.test(Gas ~ LAG)$p.value*15 > (1),1,t.test(Gas ~ LAG)$p.value*15))
+
+bind_rows(g,f,e,d,c,b,a) %>% mutate(Lag=seq(1:7)) %>% knitr::kable()
+
+```
+
+For Brent and WTI oil prices there is a significative bonferroni adjusted difference on Lags 5,6 and 7 seven days, on which prices tend to be lower compared to the prices on the day of an oil tweet. Henry hub gas prices dont show a significative different for all the tested lags.
+
+## Is there any causality?
+
+To test this question a linear granger causality test will be used on different lags. the test will be conducted on the form of if Trumps oil related tweets cause Brent oil prices.
+
+```{r,fig.align='center'}
+
+#granger causality test after
+
+
+Brent_after <- trump_oil %>% filter(Period=="After") %>% select(Brent)
+
+Brent_after <- Brent_after$Brent
+
+WTI_after <- trump_oil %>% filter(Period=="After") %>% select(WTI)
+
+WTI_after <- WTI_after$WTI
+
+Gas_after<- trump_oil %>% filter(Period=="After") %>% select(Gas)
+
+Gas_after<-Gas_after$Gas
+
+Tweet_oil_after <- trump_oil %>% filter(Period=="After") %>% select(oil_word_count)
+
+Tweet_oil_after <- Tweet_oil_after$oil_word_count
+
+
+granger_causality_brent <- map_dbl(1:10,  function(k){
+        model <- lmtest::grangertest(Brent_after~Tweet_oil_after,order=k,na.action=na.omit)
+        model$`Pr(>F)`[2]
+}) 
+
+Granger_causal_test_after <- data.frame(
+        Lag = c(1:10) ,
+        pvalue_Brent = granger_causality_brent
+        
+)
+
+granger_causality_wti <- map_dbl(1:10,  function(k){
+        model <- lmtest::grangertest(WTI_after~Tweet_oil_after,order=k,na.action=na.omit)
+        model$`Pr(>F)`[2]
+}) 
+
+Granger_causal_test_after$pvalue_WTI <- granger_causality_wti
+
+granger_causality_gas <- map_dbl(1:10,  function(k){
+        model <- lmtest::grangertest(Gas_after~Tweet_oil_after,order=k,na.action=na.omit)
+        model$`Pr(>F)`[2]
+}) 
+
+Granger_causal_test_after$pvalue_Gas <- granger_causality_gas
+
+Granger_causal_test_after %>% knitr::kable()
+
+
+#granger causality test before
+
+Brent_before <- trump_oil %>% filter(Period=="Before") %>% select(Brent)
+
+Brent_before <- Brent_before$Brent
+
+WTI_before <- trump_oil %>% filter(Period=="Before") %>% select(WTI)
+
+WTI_before <- WTI_before$WTI
+
+Gas_before<- trump_oil %>% filter(Period=="Before") %>% select(Gas)
+
+Gas_before<-Gas_before$Gas
+
+Tweet_oil_before <- trump_oil %>% filter(Period=="Before") %>% select(oil_word_count)
+
+Tweet_oil_before <- Tweet_oil_before$oil_word_count
+
+
+granger_causality_brent_before <- map_dbl(1:10,  function(k){
+        model <- lmtest::grangertest(Brent_before~Tweet_oil_before,order=k,na.action=na.omit)
+        model$`Pr(>F)`[2]
+}) 
+
+Granger_causal_test_before <- data.frame(
+        Lag = c(1:10) ,
+        pvalue_Brent = granger_causality_brent_before
+        
+)
+
+granger_causality_wti_before <- map_dbl(1:10,  function(k){
+        model <- lmtest::grangertest(WTI_before~Tweet_oil_before,order=k,na.action=na.omit)
+        model$`Pr(>F)`[2]
+}) 
+
+Granger_causal_test_before$pvalue_WTI <- granger_causality_wti_before
+
+granger_causality_gas_before <- map_dbl(1:10,  function(k){
+        model <- lmtest::grangertest(Gas_before~Tweet_oil_before,order=k,na.action=na.omit)
+        model$`Pr(>F)`[2]
+}) 
+
+Granger_causal_test_before$pvalue_Gas <- granger_causality_gas_before
+
+Granger_causal_test_before %>% knitr::kable()
+
+
+bind_rows(Granger_causal_test_before,Granger_causal_test_after,.id = "Period") %>%
+        mutate(Period=case_when(Period==1 ~ "Before", Period==2 ~ "After"))  %>% 
+        rename(Gas=pvalue_Gas,Brent=pvalue_Brent,WTI=pvalue_WTI) %>%
+        tidyr::gather(Brent,WTI,Gas,key="Commodity",value="Pvalue") %>%
+        ggplot(.,aes(x=as.factor(Lag),y=Pvalue,color=Commodity,shape=Commodity))+
+        scale_color_manual(values=c("Blue","Red","Black"))+
+        geom_point(size=3,alpha=0.8)+
+        geom_line(aes(x=Lag,y=Pvalue,color=Commodity),alpha=0.8)+
+        ylim(0,1)+
+        geom_hline(yintercept = 0.05,color="black",linetype = 'dashed')+
+        geom_hline(yintercept = 0.1,color="red",linetype = 'dashed')+
+        labs(title = "Grangers causality test commodity prices as function of trump oil tweets",
+             x="Lag (Days)",
+             y="p-value of Granger causality test")+
+        facet_grid(.~Period)+
+        ggthemes::theme_igray()
+
+```
+
+From the Granger causality test, results, the mos notorious difference is that before 2016 and Donald Trump became president, for Lags of 1 to 10, there is not a significant lag on which causality of tweets on commodity prices could be claimed, however after he became president, for Brent and WTI oil, upper Lags (above 5) start to become significant and causality can be claimed. In the case of Henry hub gas prices, there is not causality at any tested lag.
+
+
+
+
